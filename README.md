@@ -20,9 +20,7 @@ https://github.com/zigpy/zha-device-handlers/pull/4769
 
 ## Blueprint
 
-### Screenshot
-
-![Blueprint screenshot](https://raw.githubusercontent.com/totoroot/home-assistant-aqara-shutter-switch-h2/screenshots/screenshot.png)
+[![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/totoroot/home-assistant-aqara-shutter-switch-h2/main/blueprints/automation/aqara-multifunction-shutter-switch-h2.yaml)
 
 ### Functionality
 
@@ -33,21 +31,24 @@ configurable), and release stops dimming.
 ⚠️ Warning ⚠️
 
 Very small hold intervals/steps can flood Zigbee and cause disconnects, so use sensible values.
-Max hold duration set to 0 disables the limit but is not advised.
+Maximum hold duration set to 0 disables the limit but is not advised.
 
 ### What it does
 
-- **Button 3 single**: toggle Button 3 Light (off ↔ 100%)
-- **Button 4 single**: toggle Button 4 Light (off ↔ 100%)
+- **Button 3 single-click**: toggle Button 3 Light (off ↔ 100%)
+- **Button 4 single-click**: toggle Button 4 Light (off ↔ 100%)
 - **Button 3 double‑click**: custom action
 - **Button 4 double‑click**: custom action
 - **Button 3/4 hold**: dim/brighten lights in steps while held (mode configurable)
 - **Button 3/4 release**: stop dimming
 
+### Screenshot
+
+![Blueprint screenshot](https://raw.githubusercontent.com/totoroot/home-assistant-aqara-shutter-switch-h2/screenshots/screenshot.png)
+
 ### Required helpers
 
-Create these `input_boolean` helpers (Settings → Devices & Services → Helpers), **or**
-add the snippet below to your `configuration.yaml` (then restart Home Assistant):
+Create these `input_boolean` helpers (Settings → Devices & Services → Helpers), **or** add the snippet below to your `configuration.yaml` (then restart Home Assistant):
 
 ```yaml
 input_boolean:
@@ -61,8 +62,7 @@ input_boolean:
     name: Aqara Button 4 Dim Mode
 ```
 
-These helpers track “hold in progress” and the current dimming direction to avoid
-flicker while holding.
+These helpers track “hold in progress” and the current dimming direction to avoid flicker while holding.
 
 ### Install blueprint
 
