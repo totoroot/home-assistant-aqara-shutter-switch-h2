@@ -1,0 +1,412 @@
+---
+blueprint:
+  name: Aqara Multi-Function Shutter Switch H2
+  description: |-
+    Use Aqara Shutter Switch H2 (lumi.switch.aeu003) buttons 3/4 to control two lights and run custom actions on double-clicks.
+
+    - Single-click toggles lights.
+    - Hold dims/brightens lights at every step (mode configurable). Release stops dimming.
+    - Double-click can be configured to be any entity action.
+
+    ⚠️ Warning  ⚠️
+
+    Very small hold intervals/steps can flood Zigbee and cause the switch to disconnect.
+    Therefore, it is recommended to stick to a hold interval ≥ 200–300ms and step ≥ 2–5%.
+
+    Setting a maximum hold duration helps avoid running into issues, to limit looping in automation.
+    Setting it to 0 disables the limit.
+
+  domain: automation
+  input:
+    light_3:
+      name: Button 3 Light
+      default: ""
+      selector:
+        entity:
+          domain: light
+    light_4:
+      name: Button 4 Light
+      default: ""
+      selector:
+        entity:
+          domain: light
+    action_3_double:
+      name: Button 3 double-click action
+      default: []
+      selector:
+        action: {}
+    action_4_double:
+      name: Button 4 double-click action
+      default: []
+      selector:
+        action: {}
+    hold_step_pct:
+      name: Hold step percent
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 20
+          step: 1
+          mode: slider
+    hold_interval_ms:
+      name: Hold interval (ms)
+      default: 200
+      selector:
+        number:
+          min: 100
+          max: 1000
+          step: 1
+          mode: slider
+    max_hold_seconds:
+      name: Max hold duration (seconds)
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 1
+          mode: slider
+    hold_mode:
+      name: Hold mode
+      default: auto
+      selector:
+        select:
+          options:
+            - auto
+            - brighten
+            - dim
+
+mode: restart
+
+variables:
+  light3: !input light_3
+  light4: !input light_4
+  hold_mode: !input hold_mode
+  hold_step: !input hold_step_pct
+  hold_interval: !input hold_interval_ms
+  max_hold_s: !input max_hold_seconds
+  max_steps: >
+    {% if (max_hold_s | int) == 0 %}
+      1000000
+    {% else %}
+      {{ (max_hold_s * 1000 / hold_interval) | int }}
+    {% endif %}
+  warn_fast: "{{ (hold_interval | int) < 150 or (hold_step | int) < 2 }}"
+  hold3: input_boolean.aqara_btn3_hold
+  hold4: input_boolean.aqara_btn4_hold
+  dim3: input_boolean.aqara_btn3_dim
+  dim4: input_boolean.aqara_btn4_dim
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      command: 3_single
+  - platform: event
+    event_type: zha_event
+    event_data:
+      command: 3_double
+  - platform: event
+    event_type: zha_event
+    event_data:
+      command: 3_hold
+  - platform: event
+    event_type: zha_event
+    event_data:
+      command: 3_release
+  - platform: event
+    event_type: zha_event
+    event_data:
+      command: 4_single
+  - platform: event
+    event_type: zha_event
+    event_data:
+      command: 4_double
+  - platform: event
+    event_type: zha_event
+    event_data:
+      command: 4_hold
+  - platform: event
+    event_type: zha_event
+    event_data:
+      command: 4_release
+
+action:
+  - choose:
+      # Button 3 single: toggle light A (if configured)
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.command == '3_single' }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ light3 != '' and is_state(light3, 'on') }}"
+                sequence:
+                  - service: light.turn_off
+                    target:
+                      entity_id: "{{ light3 }}"
+              - conditions:
+                  - condition: template
+                    value_template: "{{ light3 != '' and is_state(light3, 'off') }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: "{{ light3 }}"
+                    data:
+                      brightness_pct: 100
+
+      # Button 4 single: toggle light B (if configured)
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.command == '4_single' }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ light4 != '' and is_state(light4, 'on') }}"
+                sequence:
+                  - service: light.turn_off
+                    target:
+                      entity_id: "{{ light4 }}"
+              - conditions:
+                  - condition: template
+                    value_template: "{{ light4 != '' and is_state(light4, 'off') }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: "{{ light4 }}"
+                    data:
+                      brightness_pct: 100
+
+      # Button 3 double: custom action
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.command == '3_double' }}"
+        sequence:
+          - choose: []
+          - sequence: !input action_3_double
+
+      # Button 4 double: custom action
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.command == '4_double' }}"
+        sequence:
+          - choose: []
+          - sequence: !input action_4_double
+
+      # Button 3 hold: dim/brighten light A (if configured)
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.command == '3_hold' }}"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ hold3 }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ warn_fast }}"
+                sequence:
+                  - service: logbook.log
+                    data:
+                      name: Aqara H2 blueprint
+                      message: >
+                        Hold interval/step is very low ({{ hold_interval }}ms, {{ hold_step }}%).
+                        This can flood Zigbee and cause device disconnects.
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ hold_mode == 'auto' and light3 != '' and is_state(light3, 'on') }}
+                sequence:
+                  - service: input_boolean.turn_on
+                    target:
+                      entity_id: "{{ dim3 }}"
+            default:
+              - service: input_boolean.turn_off
+                target:
+                  entity_id: "{{ dim3 }}"
+          - repeat:
+              count: "{{ max_steps }}"
+              sequence:
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ states(hold3) != 'on' }}"
+                      sequence:
+                        - stop: "Button 3 released"
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ light3 != '' and hold_mode == 'brighten' }}"
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ light3 }}"
+                          data:
+                            brightness_step_pct: "{{ hold_step }}"
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ light3 != '' and hold_mode == 'dim' and is_state(light3, 'on') }}"
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ light3 }}"
+                          data:
+                            brightness_step_pct: "{{ 0 - (hold_step | int) }}"
+                    - conditions:
+                        - condition: template
+                          value_template: >
+                            {{ light3 != '' and hold_mode == 'auto'
+                               and states(dim3) == 'off' and is_state(light3, 'off') }}
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ light3 }}"
+                          data:
+                            brightness_pct: "{{ hold_step }}"
+                    - conditions:
+                        - condition: template
+                          value_template: >
+                            {{ light3 != '' and hold_mode == 'auto'
+                               and states(dim3) == 'off' and is_state(light3, 'on') }}
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ light3 }}"
+                          data:
+                            brightness_step_pct: "{{ hold_step }}"
+                    - conditions:
+                        - condition: template
+                          value_template: >
+                            {{ light3 != '' and hold_mode == 'auto'
+                               and states(dim3) == 'on' and is_state(light3, 'on') }}
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ light3 }}"
+                          data:
+                            brightness_step_pct: "{{ 0 - (hold_step | int) }}"
+                - delay:
+                    milliseconds: "{{ hold_interval }}"
+
+      # Button 4 hold: dim/brighten light B (if configured)
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.command == '4_hold' }}"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ hold4 }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ warn_fast }}"
+                sequence:
+                  - service: logbook.log
+                    data:
+                      name: Aqara H2 blueprint
+                      message: >
+                        Hold interval/step is very low ({{ hold_interval }}ms, {{ hold_step }}%).
+                        This can flood Zigbee and cause device disconnects.
+                      entity_id: "{{ cover }}"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ hold_mode == 'auto' and light4 != '' and is_state(light4, 'on') }}
+                sequence:
+                  - service: input_boolean.turn_on
+                    target:
+                      entity_id: "{{ dim4 }}"
+            default:
+              - service: input_boolean.turn_off
+                target:
+                  entity_id: "{{ dim4 }}"
+          - repeat:
+              count: "{{ max_steps }}"
+              sequence:
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ states(hold4) != 'on' }}"
+                      sequence:
+                        - stop: "Button 4 released"
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ light4 != '' and hold_mode == 'brighten' }}"
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ light4 }}"
+                          data:
+                            brightness_step_pct: "{{ hold_step }}"
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ light4 != '' and hold_mode == 'dim' and is_state(light4, 'on') }}"
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ light4 }}"
+                          data:
+                            brightness_step_pct: "{{ 0 - (hold_step | int) }}"
+                    - conditions:
+                        - condition: template
+                          value_template: >
+                            {{ light4 != '' and hold_mode == 'auto'
+                               and states(dim4) == 'off' and is_state(light4, 'off') }}
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ light4 }}"
+                          data:
+                            brightness_pct: "{{ hold_step }}"
+                    - conditions:
+                        - condition: template
+                          value_template: >
+                            {{ light4 != '' and hold_mode == 'auto'
+                               and states(dim4) == 'off' and is_state(light4, 'on') }}
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ light4 }}"
+                          data:
+                            brightness_step_pct: "{{ hold_step }}"
+                    - conditions:
+                        - condition: template
+                          value_template: >
+                            {{ light4 != '' and hold_mode == 'auto'
+                               and states(dim4) == 'on' and is_state(light4, 'on') }}
+                      sequence:
+                        - service: light.turn_on
+                          target:
+                            entity_id: "{{ light4 }}"
+                          data:
+                            brightness_step_pct: "{{ 0 - (hold_step | int) }}"
+                - delay:
+                    milliseconds: "{{ hold_interval }}"
+
+      # Release: stop dimming
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.command == '3_release' }}"
+        sequence:
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ hold3 }}"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ dim3 }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.command == '4_release' }}"
+        sequence:
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ hold4 }}"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ dim4 }}"
