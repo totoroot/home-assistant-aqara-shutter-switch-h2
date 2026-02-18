@@ -1,6 +1,6 @@
 ---
 blueprint:
-  name: Aqara Multi-Function Shutter Switch H2
+  name: Aqara Multi-Click Shutter Switch H2 Light Control
   description: |-
     Use Aqara Shutter Switch H2 (lumi.switch.aeu003) buttons 3/4 to control two lights and run custom actions on double-clicks.
 
@@ -15,9 +15,13 @@ blueprint:
 
     Setting a maximum hold duration helps avoid running into issues, to limit looping in automation.
     Setting it to 0 disables the limit.
-
   domain: automation
   input:
+    cover_entity:
+      name: Cover
+      selector:
+        entity:
+          domain: cover
     light_3:
       name: Button 3 Light
       default: ""
@@ -80,6 +84,8 @@ blueprint:
 mode: restart
 
 variables:
+  cover: !input cover_entity
+  cover_device_id: "{{ device_id(cover) }}"
   light3: !input light_3
   light4: !input light_4
   hold_mode: !input hold_mode
@@ -133,6 +139,12 @@ trigger:
       command: 4_release
 
 action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.device_id != cover_device_id }}"
+        sequence:
+          - stop: "Event from a different device"
   - choose:
       # Button 3 single: toggle light A (if configured)
       - conditions:
